@@ -1,29 +1,25 @@
-
 import numpy as np
-# would be a tensor that has same thing but vectorized.
 class Tensor:
-    def __init__(self, array, children=(), op="", batch_size=1) -> None:
+    def __init__(self, array, children=(), op="") -> None:
         """
         tensors are numpy arrays
         """
         self.array = array
-        self.batch_size = batch_size
         # tuple of tensors
         self.children = children
         self.grad = 0 # we are adding, so can't start at 1
         # how he does it, rather than creating an operation class
         # add underscore because we want atribute to be different than the actual backward function
-        self._backward = lambda: None
+        self._backward = lambda: 4
         self.op = op
 
     def __add__(self, other):
         # self.__add__(other)
         # (self, other) = (Tensor, Tensor)
         if isinstance(other, Tensor):
-            print("I am here")
-            out = Tensor(self.array + other.array, (self, other), "+", batch_size=self.batch_size)
+            out = Tensor(self.array + other.array, (self, other), "+")
         else:
-            out = Tensor(self.array + other, (self, ), "+", batch_size=self.batch_size)
+            out = Tensor(self.array + other, (self, ), "+")
         # create backward function
         # self  ---> 
         #            +   --> out
@@ -33,11 +29,10 @@ class Tensor:
             # and so the grads to computer are self.grad and other.grad. Even if this
             # wasn't  the last operation and was in the middle, we would still know what
             # out.grad is because of idea above being trickled down through the network
-            self.grad += 1/self.batch_size * out.grad
+            self.grad += out.grad
             if isinstance(other, Tensor):
-                print("bacth_size", self.batch_size)
-                print("out.grad", out.grad)
-                other.grad += 1/self.batch_size * out.grad
+                # print("out.grad", out.grad)
+                other.grad += out.grad
         # want to make out.backward be the backward() function, which will then update necessary
         # gradiants 
         out._backward = _backward # can't do backward() because function returns none
@@ -45,43 +40,88 @@ class Tensor:
         # want to return out after defining function
         return out
     
+    def __radd__(self, other): # other + self
+        return self + other
+
     def __mul__(self, other):
-        if isinstance(other, Tensor):
-            out = Tensor(self.array * other.array, (self, other), "*", batch_size=self.batch_size)
-        else:
-            out = Tensor(self.array * other, (self, ),  "*", batch_size=self.batch_size)
+        other = other if isinstance(other, Tensor) else Tensor(other)
+        out = Tensor(self.array * other.array, (self, other), "*")
         
         def _backward():
-            self.grad += 1/self.batch_size * out.grad * other.array
-            if isinstance(other, Tensor):
-                other.grad += 1/self.batch_size * out.grad * self.array
+            self.grad += out.grad * other.array
+            other.grad += out.grad * self.array
         out._backward = _backward
         return out
+
+    def __rmul__(self, other): # other * self
+        return self * other
 
     def __pow__(self, power):
         if isinstance(power, Tensor):
-            out = Tensor(self.array ** power.array, (self, power), "**", batch_size=self.batch_size)
+            out = Tensor(self.array ** power.array, (self, power), "**")
         else:
-            out = Tensor(self.array ** power, (self, ), "**", batch_size=self.batch_size)
+            out = Tensor(self.array ** power, (self, ), "**")
         
         def _backward():
-            self.grad += 1/self.batch_size * out.grad * (power.array * self ** (power.array - 1))
+            self.grad += out.grad * (power.array * self ** (power.array - 1))
             if isinstance(power, Tensor):
-                power.grad += 1/self.batch_size * out.grad * (self**power) * np.log(self.array)
+                power.grad += out.grad * (self**power) * self.log()
         out._backward = _backward
         return out
     
-    def __relu__(self):
-        out = Tensor(np.max(0, self.array), (self, ), "relu", batch_size=self.batch_size)
+    def __truediv__(self, other): # self / other
+        return self * other**-1
+
+    def __rtruediv__(self, other): # other / self
+        return other * self**-1
+
+    def log(self):
+        out = np.log(self.array)
+        out = Tensor(out, (self, ), "log")
+
         def _backward():
-            self.grad += 1/self.batch_size * ((self.array > 0) * out.grad)
+            self.grad += out.grad * 1/self
+        
         out._backward = _backward
         return out
 
-    def __neg__(self):
-        out = Tensor(-1 * self, (self, ), "neg", batch_size=self.batch_size) 
+    def softmax(self):
+        Z = self.array - np.max(self.array,axis=1, keepdims=True)
+        exp = np.exp(Z)
+        out = exp / np.sum(exp, axis = 1, keepdims=True)
+        out = Tensor(out, (self, ), "softmax")
+
         def _backward():
-            self.grad += 1/self.batch_size * (-1 * out.grad)
+            # jacobian = np.zeros(out.shape)
+            # for i in range(len(out.array)):
+            #     for j in range(len(out.array[0])):
+            #         if i == j:
+            #             jacobian[i][j] = - out.array[i] * out.array[i]
+            #         else:
+            #             jacobian[i][j] = out.array[i] * (1 - out.array[j])
+            # self.grad += jacobian * out.grad # out.grad will be one
+
+            jacobian = - out.array * out.array
+            for i in range(len(out.array[0])):
+                jacobian[i][i] = out.array[i][i] * (1 - out.array[i][i])
+            self.grad += jacobian * out.grad
+        out._backward = _backward
+        return out
+    
+    # def reshape(self, shape):
+    #     out = self.array.reshape(shape)
+    #     out = Tensor(out, (self,), "reshape")
+
+    #     def _backward():
+    #         self.reshape += out.grad(self.shape)
+        
+    #     out._backward = _backward
+    #     return out
+
+    def __neg__(self):
+        out = Tensor(-1 * self.array, (self, ), "neg") 
+        def _backward():
+            self.grad += (-1 * out.grad)
         out._backward = _backward
         return out
     
@@ -89,77 +129,108 @@ class Tensor:
         return self + (-other)
     
     def __matmul__(self, other):
-        out = Tensor(self.array @ other.array, (self, other), "@", batch_size=self.batch_size)
+        other = Tensor(other) if isinstance(other, np.ndarray) else other
+        out = Tensor(self.array @ other.array, (self, other), "@")
+        
         def _backward():
             b = other.array
             a = self.array
-            grad_self = out.grad @ b.Transpose(axes=None)
-            grad_other = 1/self.batch_size * a.Transpose(axes=None) @ out.grad
-
-            if grad_self.shape != a.shape:
-                grad_self =  grad_self.Summation(tuple(range(len(grad_self.shape) - len(a.shape))))
-            if grad_other.shape != b.shape:
-                grad_other = grad_other.Summation(tuple(range(len(grad_other.shape) - len(b.shape))))
+            # calculating grad of transpose within grad function does not make sense
+            if isinstance(out.grad, float):
+                out.grad = np.full(out.array.shape, out.grad)
             
-            self.grad += 1/self.batch_size * grad_self
-            other.grad += 1/self.batch_size * grad_other
+            grad_self = out.grad @ b.T
+            if grad_self.shape != a.shape:
+                grad_self =  np.sum(grad_self, axis = tuple(range(len(grad_self.shape) - len(a.shape))))
+            self.grad += grad_self
+            
+            grad_other = a.T @ out.grad
+            if grad_other.shape != b.shape:
+                grad_other = np.sum(grad_other, tuple(range(len(grad_other.shape) - len(b.shape))))
+            other.grad += grad_other
 
         out._backward = _backward
         return out
 
+    def __rmatmul__(self, other):
+        return self * other
+    
+    def relu(self):
+        out = np.maximum(self.array, 0)
+        out = Tensor(out, (self, ), "relu")
+        def _backward():
+            self.grad += ((self.array > 0) * out.grad)
+        out._backward = _backward
+        return out
+
+    # http://coldattic.info/post/116/
     def BroadcastTo(self, shape):
-        out = np.broadcast_to(self.array, shape)
-        out = Tensor(out, (self,), "broadcast", batch_size=self.batch_size)
+        # self.shape is m x 1
+        # a = np.array([[1, -2]]).reshape(2, 1)
+        # b = np.ones(a.T.shape)
+        # c = a @ b
+        ones_array = np.ones((shape[0], 1))
+        # explictly call transpose
+        self = self.transpose(axes=None)
+        return Tensor(ones_array).__matmul__(self)
+
+
+    def summation(self, axes):
+        out = np.sum(self.array, axes)
+        out = Tensor(out, (self,), "sum")
 
         def _backward():
-            a = self.array
-            array_out = out.grad
-            num_broadcasted_dims = len(array_out.shape) - len(a.shape)
-            # Sum along the added dimensions to get the gradient of the smaller array
-            #grad_a = summation(out_grad, tuple(range(num_broadcasted_dims)))
-            grad_a = np.ones_like(a.shape) * array_out
-            self.grad += 1/self.batch_size * grad_a
+            if isinstance(out.grad, float):
+                out.grad = np.broadcast_to(out.grad, self.array.shape)
+            if out.grad.ndim == 0:
+                out.grad = out.grad.reshape((-1,1))
+            if axes is not None and 0 in axes:
+                out.grad = np.transpose(out.grad)
+            self.grad += out.grad * np.ones_like(self.array)
+        out._backward = _backward
+        return out
+
+    def transpose(self, axes):
+        if axes:
+            out = np.swapaxes(self.array, *axes)
+        else:
+            out = np.swapaxes(self.array, self.array.ndim - 2, self.array.ndim - 1)
+        out = Tensor(out, (self,), "transpose")
+
+        def _backward():
+            self.grad += out.grad.transpose(axes)
         
         out._backward = _backward
         return out
 
-    def Summation(self, axes):
-        out = np.sum(self.array, axis=axes)
-        out = Tensor(out, (self,), "summation", batch_size=self.batch_size)
-
-        def _backward():
-            array_out = out.grad
-            if array_out.ndim == 0:
-                array_out.reshape((-1,1))
-            
-            if 0 in self.axes:
-                array_out.Transpose(axes=None)
-            
-            self.grad += 1 / self.batch_size * array_out * np.ones_like(self)
-        out._backward = _backward
-        return out
-    
-    def Transpose(self, axes):
-        if axes:
-            out = np.swapaxes(self.array, *axes)
-        else:
-            a = self.array
-            out = np.swapaxes(a, a.ndim - 2, a.ndim - 1)
-        out = Tensor(self, (self,), ".T", batch_size=self.batch_size)
-
-        def _backward():
-            array_out = out.grad
-            self.grad += 1/ self.batch_size * (array_out.Transpose(axes))
-        out._backward = _backward
-        return out
-
-
     def __repr__(self):
         return f"Tensor(array={self.array}, grad={self.grad})"
     
+    def stable_softmax(self):
+        X = self.array
+        exps = np.exp(X - np.max(X))
+        return exps / np.sum(exps)
+
+    def cross_entropy_loss(self, labels):
+        probs = self
+        log_likleyhood = -np.log(probs.array[range(probs.array.shape[0]), labels.array])
+        losses = sum(log_likleyhood) * (1.0 / len(log_likleyhood))
+        out = Tensor(losses, (self,), "loss")
+
+        def _backward():
+            m = labels.array.shape[0]
+            grad = self.stable_softmax()
+            grad[range(m),labels.array] -= 1
+            grad = grad/m
+            self.grad += grad * out.grad
+        
+        out._backward = _backward
+        return out
+
     # assumption is that this is called on the out tensor, which is why
     # it is ok to put it in the class
     def backward(self):
+
         # topological order all of the children in the graph
         topo = []
         visited = set()
@@ -172,8 +243,6 @@ class Tensor:
         build_topo(self)
 
         # go one variable at a time and apply the chain rule to get its gradient
-        self.grad = 1
+        self.grad = 1.0
         for v in reversed(topo):
             v._backward()
-        
-            

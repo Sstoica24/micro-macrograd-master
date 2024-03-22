@@ -13,18 +13,21 @@ class Module:
 
 class Layer(Module):
     def __init__(self, num_inputs, num_outputs, nonlin=True):
-        self.biases = Tensor(np.zeros((num_outputs,1)))
+        self.biases = Tensor(np.zeros((num_outputs, 1))) 
         self.weights = Tensor(np.random.rand(num_inputs, num_outputs))
         self.nonlin = nonlin
         self.num_inputs = num_inputs
         self.num_outputs = num_outputs
     
     def __call__(self, X):
-        y = X @ self.weights + self.biases.BroadcastTo((self.weights.shape))
+        mult = X @ self.weights
+        y = mult + self.biases.BroadcastTo((mult.array.shape))
         return y.relu() if self.nonlin else y
 
     def parameters(self):
-        return [self.weights, self.biases] 
+        self.biases.array = self.biases.array.reshape(-1, 1)
+        # no need to return tensors because this is only used for the regularizer step.
+        return [self.weights, self.biases]
     
     def __repr__(self) -> str:
         return f"weights of the layer are {self.weights}, and the bias is {self.biases}"
@@ -38,7 +41,7 @@ class MLP_macro(Module):
     def __call__(self, x):
         for layer in self.layers:
             x = layer(x)
-        return x
+        return x.softmax()
 
     def parameters(self):
         return [p for layer in self.layers for p in layer.parameters()]
