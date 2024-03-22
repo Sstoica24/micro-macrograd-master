@@ -1,0 +1,47 @@
+import random
+import numpy as np
+from macrograd.engine import Tensor
+
+class Module:
+
+    def zero_grad(self):
+        for p in self.parameters():
+            p.grad = 0
+    # adding @property above paramters def would allow us to call paramters by doing just model.parameters
+    def parameters(self):
+        return []
+
+class Layer(Module):
+    def __init__(self, num_inputs, num_outputs, nonlin=True):
+        self.biases = Tensor(np.zeros((num_outputs,1)))
+        self.weights = Tensor(np.random.rand(num_inputs, num_outputs))
+        self.nonlin = nonlin
+        self.num_inputs = num_inputs
+        self.num_outputs = num_outputs
+    
+    def __call__(self, X):
+        y = X @ self.weights + self.biases.BroadcastTo((self.weights.shape))
+        return y.relu() if self.nonlin else y
+
+    def parameters(self):
+        return [self.weights, self.biases] 
+    
+    def __repr__(self) -> str:
+        return f"weights of the layer are {self.weights}, and the bias is {self.biases}"
+
+class MLP_macro(Module):
+
+    def __init__(self, nin, nouts):
+        sz = [nin] + nouts
+        self.layers = [Layer(sz[i], sz[i+1], nonlin=i!=len(nouts)-1) for i in range(len(nouts))]
+
+    def __call__(self, x):
+        for layer in self.layers:
+            x = layer(x)
+        return x
+
+    def parameters(self):
+        return [p for layer in self.layers for p in layer.parameters()]
+
+    def __repr__(self):
+        return f"MLP of [{', '.join(str(layer) for layer in self.layers)}]"
