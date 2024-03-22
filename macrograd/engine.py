@@ -224,12 +224,6 @@ class Tensor:
             grad[range(m), labels.array] -= 1
             grad /= m
 
-            # Gradient clipping
-            max_grad_norm = 1.0  # Set your desired maximum gradient norm
-            grad_norm = np.linalg.norm(grad)
-            if grad_norm > max_grad_norm:
-                grad *= max_grad_norm / grad_norm
-
             self.grad += grad * out.grad
 
         out._backward = _backward
