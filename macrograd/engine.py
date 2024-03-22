@@ -213,7 +213,8 @@ class Tensor:
 
     def cross_entropy_loss(self, labels):
         m = labels.array.shape[0]
-        p = self.stable_softmax()
+        # self has already recieved softmax
+        p = self.array
         log_likelihood = -np.log(p[range(m), labels.array])
         loss = np.sum(log_likelihood) / m
         out = Tensor(loss, (self,), op="loss")
