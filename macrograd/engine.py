@@ -212,18 +212,25 @@ class Tensor:
         return exps / np.sum(exps)
 
     def cross_entropy_loss(self, labels):
-        probs = self
-        log_likleyhood = -np.log(probs.array[range(probs.array.shape[0]), labels.array])
-        losses = sum(log_likleyhood) * (1.0 / len(log_likleyhood))
-        out = Tensor(losses, (self,), "loss")
+        m = labels.array.shape[0]
+        p = self.stable_softmax()
+        log_likelihood = -np.log(p[range(m),labels.array])
+        loss = np.sum(log_likelihood) / m
+        out = Tensor(loss, (self,), op = "loss")
 
         def _backward():
-            m = labels.array.shape[0]
-            grad = self.stable_softmax()
-            grad[range(m),labels.array] -= 1
-            grad = grad/m
+            grad = p
+            grad[range(m), labels.array] -= 1
+            grad /= m
+            
+            # gradient cliping
+            max_grad_norm = 10.0  # Set your desired maximum gradient norm
+            grad_norm = np.linalg.norm(grad)
+            if grad_norm > max_grad_norm:
+                grad *= max_grad_norm / grad_norm
+
             self.grad += grad * out.grad
-        
+
         out._backward = _backward
         return out
 
