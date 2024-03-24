@@ -86,7 +86,8 @@ class Tensor:
         return out
 
     def softmax(self):
-        Z = self.array - np.max(self.array,axis=1, keepdims=True)
+        # Z = self.array - np.max(self.array,axis=1, keepdims=True)
+        Z = self.array
         exp = np.exp(Z)
         out = exp / np.sum(exp, axis = 1, keepdims=True)
         out = Tensor(out, (self, ), "softmax")
@@ -215,6 +216,7 @@ class Tensor:
         m = labels.array.shape[0]
         # self has already recieved softmax
         p = self.array
+        # p[range(m), labels.array] does p[i][tru_labels[i]] for every row i
         log_likelihood = -np.log(p[range(m), labels.array])
         loss = np.sum(log_likelihood) / m
         out = Tensor(loss, (self,), op="loss")
