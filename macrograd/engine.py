@@ -1,4 +1,7 @@
 import numpy as np
+# out_grad is going to be numpy array. This is because we don't want gradient to itself have
+# a gradient. We are not worried about double differentiation.
+
 class Tensor:
     def __init__(self, array, children=(), op="") -> None:
         """
@@ -31,7 +34,6 @@ class Tensor:
             # out.grad is because of idea above being trickled down through the network
             self.grad += out.grad
             if isinstance(other, Tensor):
-                # print("out.grad", out.grad)
                 other.grad += out.grad
         # want to make out.backward be the backward() function, which will then update necessary
         # gradiants 
@@ -63,9 +65,11 @@ class Tensor:
             out = Tensor(self.array ** power, (self, ), "**")
         
         def _backward():
-            self.grad += out.grad * (power.array * self ** (power.array - 1))
+            a = self.array
+            b = power.array
+            self.grad += out.grad * (b * (a ** (b - 1)))
             if isinstance(power, Tensor):
-                power.grad += out.grad * (self**power) * self.log()
+                power.grad += out.grad * ((a ** b) * np.log(a))
         out._backward = _backward
         return out
     
@@ -75,19 +79,19 @@ class Tensor:
     def __rtruediv__(self, other): # other / self
         return other * self**-1
 
-    def log(self):
-        out = np.log(self.array)
-        out = Tensor(out, (self, ), "log")
+    # def log(self):
+    #     out = np.log(self.array)
+    #     out = Tensor(out, (self, ), "log")
 
-        def _backward():
-            self.grad += out.grad * 1/self
+    #     def _backward():
+    #         self.grad += out.grad * 1/self
         
-        out._backward = _backward
-        return out
+    #     out._backward = _backward
+    #     return out
 
     def softmax(self):
-        # Z = self.array - np.max(self.array,axis=1, keepdims=True)
-        Z = self.array
+        Z = self.array - np.max(self.array,axis=1, keepdims=True)
+        # Z = self.array
         exp = np.exp(Z)
         out = exp / np.sum(exp, axis = 1, keepdims=True)
         out = Tensor(out, (self, ), "softmax")
@@ -101,7 +105,6 @@ class Tensor:
             #         else:
             #             jacobian[i][j] = out.array[i] * (1 - out.array[j])
             # self.grad += jacobian * out.grad # out.grad will be one
-
             jacobian = - out.array * out.array
             for i in range(len(out.array[0])):
                 jacobian[i][i] = out.array[i][i] * (1 - out.array[i][i])
@@ -176,20 +179,20 @@ class Tensor:
         return Tensor(ones_array).__matmul__(self)
 
 
-    def summation(self, axes):
-        out = np.sum(self.array, axes)
-        out = Tensor(out, (self,), "sum")
+    # def summation(self, axes):
+    #     out = np.sum(self.array, axes)
+    #     out = Tensor(out, (self,), "sum")
 
-        def _backward():
-            if isinstance(out.grad, float):
-                out.grad = np.broadcast_to(out.grad, self.array.shape)
-            if out.grad.ndim == 0:
-                out.grad = out.grad.reshape((-1,1))
-            if axes is not None and 0 in axes:
-                out.grad = np.transpose(out.grad)
-            self.grad += out.grad * np.ones_like(self.array)
-        out._backward = _backward
-        return out
+    #     def _backward():
+    #         if isinstance(out.grad, float):
+    #             out.grad = np.broadcast_to(out.grad, self.array.shape)
+    #         if out.grad.ndim == 0:
+    #             out.grad = out.grad.reshape((-1,1))
+    #         if axes is not None and 0 in axes:
+    #             out.grad = np.transpose(out.grad)
+    #         self.grad += out.grad * np.ones_like(self.array)
+    #     out._backward = _backward
+    #     return out
 
     def transpose(self, axes):
         if axes:
@@ -206,26 +209,26 @@ class Tensor:
 
     def __repr__(self):
         return f"Tensor(array={self.array}, grad={self.grad})"
-    
-    def stable_softmax(self):
-        X = self.array
-        exps = np.exp(X - np.max(X))
-        return exps / np.sum(exps)
 
-    def cross_entropy_loss(self, labels):
-        m = labels.array.shape[0]
+    def cross_entropy_loss(self, Y):
         # self has already recieved softmax
+        m = Y.array.shape[0]
         p = self.array
-        # p[range(m), labels.array] does p[i][tru_labels[i]] for every row i
-        log_likelihood = -np.log(p[range(m), labels.array])
-        loss = np.sum(log_likelihood) / m
-        out = Tensor(loss, (self,), op="loss")
+
+        # get one_hot encoding of labels
+        labels = np.zeros((m, p.shape[1])).astype(int)
+        labels[range(m), Y.array.flatten()] = 1
+
+        # formula for cross_entropy_loss
+        loss = labels * np.log(p)
+        loss = -np.sum(loss) / m
+        out = Tensor(loss, (self,), "loss")
 
         def _backward():
-            grad = p
-            grad[range(m), labels.array] -= 1
-            grad /= m
-
+            # the gradient is just p - labels
+            # no need to divide by m because we will do that
+            # in our optimization step
+            grad = p - labels
             self.grad += grad * out.grad
 
         out._backward = _backward
