@@ -90,8 +90,8 @@ class Tensor:
     #     return out
 
     def softmax(self):
-        Z = self.array - np.max(self.array,axis=1, keepdims=True)
-        # Z = self.array
+        # Z = self.array - np.max(self.array,axis=1, keepdims=True)
+        Z = self.array
         exp = np.exp(Z)
         out = exp / np.sum(exp, axis = 1, keepdims=True)
         out = Tensor(out, (self, ), "softmax")
@@ -106,7 +106,11 @@ class Tensor:
             #             jacobian[i][j] = out.array[i] * (1 - out.array[j])
             # self.grad += jacobian * out.grad # out.grad will be one
             jacobian = - out.array * out.array
-            for i in range(len(out.array[0])):
+            if out.array.shape[0] < out.array.shape[1]:
+                loop = out.array.shape[0]
+            else:
+                loop = out.array.shape[1]
+            for i in range(loop):
                 jacobian[i][i] = out.array[i][i] * (1 - out.array[i][i])
             self.grad += jacobian * out.grad
         out._backward = _backward
@@ -220,6 +224,8 @@ class Tensor:
         labels[range(m), Y.array.flatten()] = 1
 
         # formula for cross_entropy_loss
+        if np.sum(p == 0):
+            import pdb; pdb.set_trace()
         loss = labels * np.log(p)
         loss = -np.sum(loss) / m
         out = Tensor(loss, (self,), "loss")

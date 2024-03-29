@@ -14,8 +14,12 @@ class Module:
 class Layer(Module):
     def __init__(self, num_inputs, num_outputs, nonlin=True):
         self.biases = Tensor(np.zeros((num_outputs, 1)))
+        # if I don't multiply by stddev, weights get way too large, causing softmax
+        # to become way to large
         stddev = np.sqrt(2 / num_inputs)  # Or adjust scaling factor as needed
         self.weights = Tensor(np.random.randn(num_inputs, num_outputs) * stddev)
+        print(f"{self.weights= }")
+        print(f"{self.biases= }")
         self.nonlin = nonlin
         self.num_inputs = num_inputs
         self.num_outputs = num_outputs
