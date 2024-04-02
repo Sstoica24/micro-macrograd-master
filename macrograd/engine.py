@@ -1,4 +1,7 @@
 import numpy as np
+# out_grad is going to be numpy array. This is because we don't want gradient to itself have
+# a gradient. We are not worried about double differentiation.
+
 class Tensor:
     def __init__(self, array, children=(), op="") -> None:
         """
@@ -31,7 +34,6 @@ class Tensor:
             # out.grad is because of idea above being trickled down through the network
             self.grad += out.grad
             if isinstance(other, Tensor):
-                # print("out.grad", out.grad)
                 other.grad += out.grad
         # want to make out.backward be the backward() function, which will then update necessary
         # gradiants 
@@ -63,9 +65,13 @@ class Tensor:
             out = Tensor(self.array ** power, (self, ), "**")
         
         def _backward():
-            self.grad += out.grad * (power.array * self ** (power.array - 1))
+            a = self.array
             if isinstance(power, Tensor):
-                power.grad += out.grad * (self**power) * self.log()
+                b = power.array
+                power.grad += out.grad * ((a ** b) * np.log(a))
+            else:
+                b = power
+            self.grad += out.grad * (b * (a ** (b - 1)))
         out._backward = _backward
         return out
     
@@ -80,43 +86,33 @@ class Tensor:
         out = Tensor(out, (self, ), "log")
 
         def _backward():
-            self.grad += out.grad * 1/self
+            self.grad += out.grad / self.array
         
-        out._backward = _backward
-        return out
-
-    def softmax(self):
-        Z = self.array - np.max(self.array,axis=1, keepdims=True)
-        exp = np.exp(Z)
-        out = exp / np.sum(exp, axis = 1, keepdims=True)
-        out = Tensor(out, (self, ), "softmax")
-
-        def _backward():
-            # jacobian = np.zeros(out.shape)
-            # for i in range(len(out.array)):
-            #     for j in range(len(out.array[0])):
-            #         if i == j:
-            #             jacobian[i][j] = - out.array[i] * out.array[i]
-            #         else:
-            #             jacobian[i][j] = out.array[i] * (1 - out.array[j])
-            # self.grad += jacobian * out.grad # out.grad will be one
-
-            jacobian = - out.array * out.array
-            for i in range(len(out.array[0])):
-                jacobian[i][i] = out.array[i][i] * (1 - out.array[i][i])
-            self.grad += jacobian * out.grad
         out._backward = _backward
         return out
     
-    # def reshape(self, shape):
-    #     out = self.array.reshape(shape)
-    #     out = Tensor(out, (self,), "reshape")
+    def exp(self):
+        out = np.exp(self.array)
+        out = Tensor(out, (self,), "exp")
 
-    #     def _backward():
-    #         self.reshape += out.grad(self.shape)
+        def _backward():
+            grad  = out.grad * np.exp(self.array)
+            self.grad += grad
+        out._backward = _backward
+        return out
+
+
+    def reshape(self, shape):
+        out = np.reshape(self.array, shape)
+        out = Tensor(out, (self,), "reshape")
+
+        def _backward():
+            if isinstance(out.grad, float):
+                out.grad = np.full(out.array.shape, out.grad)
+            self.grad += np.reshape(out.grad, self.array.shape)
         
-    #     out._backward = _backward
-    #     return out
+        out._backward = _backward
+        return out
 
     def __neg__(self):
         out = Tensor(-1 * self.array, (self, ), "neg") 
@@ -166,13 +162,32 @@ class Tensor:
     # http://coldattic.info/post/116/
     def BroadcastTo(self, shape):
         # self.shape is m x 1
-        # a = np.array([[1, -2]]).reshape(2, 1)
-        # b = np.ones(a.T.shape)
-        # c = a @ b
+        if self.array.shape[0] == shape[0]:
+            ones_array = np.ones((1, shape[1]))
+            return self.__matmul__(Tensor(ones_array))
+        self.array = self.array.reshape(-1, 1)
         ones_array = np.ones((shape[0], 1))
         # explictly call transpose
         self = self.transpose(axes=None)
         return Tensor(ones_array).__matmul__(self)
+    
+        # out = np.broadcast_to(self.array, shape)
+        # out = Tensor(out, (self,), "broadcast")
+
+        # def _backward():
+        #     if isinstance(out.grad, float):
+        #         out.grad = np.full(out.array.shape, out.grad)
+        #     grad_a = out.grad
+        #     output_shape = out.grad.shape
+        #     input_shape = self.array.shape
+        #     for _ in range(len(output_shape) - len(input_shape)):
+        #         grad_a = np.sum(grad_a, axis = 0)
+        #     for i, dimension in enumerate(input_shape):
+        #         if dimension == 1:
+        #             grad_a = np.sum(grad_a, axis = i)
+        #     self.grad += np.reshape(grad_a, input_shape)
+        # out._backward = _backward
+        # return out
 
 
     def summation(self, axes):
@@ -186,7 +201,12 @@ class Tensor:
                 out.grad = out.grad.reshape((-1,1))
             if axes is not None and 0 in axes:
                 out.grad = np.transpose(out.grad)
-            self.grad += out.grad * np.ones_like(self.array)
+            ones = np.ones_like(self.array)
+            if out.grad.shape != ones.shape:
+                self.grad += np.broadcast_to(out.grad.reshape(-1, 1), self.array.shape)  * np.ones_like(self.array)
+            else:
+                self.grad += out.grad * np.ones_like(self.array)
+
         out._backward = _backward
         return out
 
@@ -205,32 +225,40 @@ class Tensor:
 
     def __repr__(self):
         return f"Tensor(array={self.array}, grad={self.grad})"
-    
-    def stable_softmax(self):
-        X = self.array
-        exps = np.exp(X - np.max(X))
-        return exps / np.sum(exps)
 
-    def cross_entropy_loss(self, labels):
-        m = labels.array.shape[0]
-        # self has already recieved softmax
-        p = self.array
-        log_likelihood = -np.log(p[range(m), labels.array])
-        loss = np.sum(log_likelihood) / m
-        out = Tensor(loss, (self,), op="loss")
+    # def cross_entropy_loss(self, X_batch, Y, stabalize=True):
+    #     # do what you did in hw1. Have the loss be with respect to the operations
+    #     # you implemented. This makes more sense and is how it should be done. 
 
-        def _backward():
-            grad = p
-            grad[range(m), labels.array] -= 1
-            grad /= m
+    #     # self will be the logits
+    #     # Y will be the labels
+    #     # stabalize will dictate wether we normalize the loss
 
-            self.grad += grad * out.grad
+    #     # apply softmax function
+    #     Z = self.array
+    #     if stabalize:
+    #         Z -= np.max(Z, axis = 1, keepdims=True)
+    #     exp_Z = np.exp(Z)
+    #     probs = exp_Z / np.sum(exp_Z, axis=1, keepdims=True)
 
-        out._backward = _backward
-        return out
+    #     # calculate the loss
+    #     m = Z.shape[0]
+    #     array = probs[np.arange(m), Y.array]
+    #     loss = np.sum(-np.log(array)) / m
+    #     out = Tensor(loss, (self,), "loss")
+
+    #     def _backward():
+    #         probs[np.arange(m), Y.array] -= 1
+    #         # but we need to dot with X_batch, but if we do that we immediatly find
+    #         # gradients, meaning there is no need for automatic dif. 
+    #         # grad = Z.T.dot(probs)
+    #         self.grad += probs
+    #     out._backward = _backward
+    #     return out, probs
 
     # assumption is that this is called on the out tensor, which is why
     # it is ok to put it in the class
+    
     def backward(self):
 
         # topological order all of the children in the graph
