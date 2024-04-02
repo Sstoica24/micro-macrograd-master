@@ -13,13 +13,14 @@ class Module:
 
 class Layer(Module):
     def __init__(self, num_inputs, num_outputs, nonlin=True):
-        self.biases = Tensor(np.zeros((num_outputs, 1)))
+        # self.biases = Tensor(np.zeros((num_outputs, 1)))
+        self.biases = Tensor(np.zeros((1, num_outputs)))
         # if I don't multiply by stddev, weights get way too large, causing softmax
         # to become way to large
         stddev = np.sqrt(2 / num_inputs)  # Or adjust scaling factor as needed
         self.weights = Tensor(np.random.randn(num_inputs, num_outputs) * stddev)
-        print(f"{self.weights= }")
-        print(f"{self.biases= }")
+        # print(f"{self.weights= }")
+        # print(f"{self.biases= }")
         self.nonlin = nonlin
         self.num_inputs = num_inputs
         self.num_outputs = num_outputs
@@ -31,7 +32,7 @@ class Layer(Module):
 
     def parameters(self):
         self.biases.array = self.biases.array.reshape(-1, 1)
-        # no need to return tensors because this is only used for the regularizer step.
+        # returning tensors
         return [self.weights, self.biases]
     
     def __repr__(self) -> str:
@@ -46,7 +47,7 @@ class MLP_macro(Module):
     def __call__(self, x):
         for layer in self.layers:
             x = layer(x)
-        return x.softmax()
+        return x
 
     def parameters(self):
         return [p for layer in self.layers for p in layer.parameters()]
