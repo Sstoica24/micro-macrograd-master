@@ -170,24 +170,6 @@ class Tensor:
         # explictly call transpose
         self = self.transpose(axes=None)
         return Tensor(ones_array).__matmul__(self)
-    
-        # out = np.broadcast_to(self.array, shape)
-        # out = Tensor(out, (self,), "broadcast")
-
-        # def _backward():
-        #     if isinstance(out.grad, float):
-        #         out.grad = np.full(out.array.shape, out.grad)
-        #     grad_a = out.grad
-        #     output_shape = out.grad.shape
-        #     input_shape = self.array.shape
-        #     for _ in range(len(output_shape) - len(input_shape)):
-        #         grad_a = np.sum(grad_a, axis = 0)
-        #     for i, dimension in enumerate(input_shape):
-        #         if dimension == 1:
-        #             grad_a = np.sum(grad_a, axis = i)
-        #     self.grad += np.reshape(grad_a, input_shape)
-        # out._backward = _backward
-        # return out
 
 
     def summation(self, axes):
@@ -225,39 +207,6 @@ class Tensor:
 
     def __repr__(self):
         return f"Tensor(array={self.array}, grad={self.grad})"
-
-    # def cross_entropy_loss(self, X_batch, Y, stabalize=True):
-    #     # do what you did in hw1. Have the loss be with respect to the operations
-    #     # you implemented. This makes more sense and is how it should be done. 
-
-    #     # self will be the logits
-    #     # Y will be the labels
-    #     # stabalize will dictate wether we normalize the loss
-
-    #     # apply softmax function
-    #     Z = self.array
-    #     if stabalize:
-    #         Z -= np.max(Z, axis = 1, keepdims=True)
-    #     exp_Z = np.exp(Z)
-    #     probs = exp_Z / np.sum(exp_Z, axis=1, keepdims=True)
-
-    #     # calculate the loss
-    #     m = Z.shape[0]
-    #     array = probs[np.arange(m), Y.array]
-    #     loss = np.sum(-np.log(array)) / m
-    #     out = Tensor(loss, (self,), "loss")
-
-    #     def _backward():
-    #         probs[np.arange(m), Y.array] -= 1
-    #         # but we need to dot with X_batch, but if we do that we immediatly find
-    #         # gradients, meaning there is no need for automatic dif. 
-    #         # grad = Z.T.dot(probs)
-    #         self.grad += probs
-    #     out._backward = _backward
-    #     return out, probs
-
-    # assumption is that this is called on the out tensor, which is why
-    # it is ok to put it in the class
     
     def backward(self):
 
